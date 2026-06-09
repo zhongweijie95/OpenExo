@@ -689,11 +689,18 @@ float ProportionalJointMoment::calc_motor_cmd()
         } // End of gain scheduling
 
         // PID on Motor Command
-        cmd =  _pid(_controller_data->filtered_setpoint,
-                            _controller_data->filtered_torque_reading,
-                            kp_use,
-                            ki_use,
-                            kd_use);
+        if (_joint_data->torque_offset_reading == 0)
+        {
+            cmd = _controller_data->filtered_setpoint;
+        }
+        else
+        {
+            cmd = _controller_data->filtered_setpoint + _pid(_controller_data->filtered_setpoint,
+                                _controller_data->filtered_torque_reading,
+                                kp_use,
+                                ki_use,
+                                kd_use);
+        }
 			
     } // End of PID flag check
     else
