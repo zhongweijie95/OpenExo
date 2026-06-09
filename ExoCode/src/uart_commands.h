@@ -335,8 +335,10 @@ namespace UART_command_handlers
     inline static void update_cal_fsr(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
     {
         // logger::println("UART_command_handlers::update_cal_fsr->Got msg");
+        exo_data->right_side.reset_fsr_calibration = true;
         exo_data->right_side.do_calibration_toe_fsr = 1;
         exo_data->right_side.do_calibration_heel_fsr = 1;
+        exo_data->left_side.reset_fsr_calibration = true;
         exo_data->left_side.do_calibration_toe_fsr = 1;
         exo_data->left_side.do_calibration_heel_fsr = 1;
     }
