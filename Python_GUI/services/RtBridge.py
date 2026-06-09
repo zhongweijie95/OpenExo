@@ -24,6 +24,7 @@ class RtBridge(QtCore.QObject):
     controllersReceived = QtCore.Signal(list, list)
     controllerMatrixReceived = QtCore.Signal(list)
     controllerValuesReceived = QtCore.Signal(list)
+    paramUpdateAckReceived = QtCore.Signal(dict)
     rtDataUpdated = QtCore.Signal(list)
 
     def __init__(self, parent=None):
@@ -296,6 +297,7 @@ class RtBridge(QtCore.QObject):
                 return
             event_info = parts[0]
             event_data = parts[1]
+            command = event_info[1] if len(event_info) > 1 else ""
             # Extract count from event_info using regex
             m = self._event_count_regex.match(event_info)
             if not m.hasMatch():
@@ -305,6 +307,10 @@ class RtBridge(QtCore.QObject):
             except Exception as e:
                 self.logger.error(f"Failed to parse data length: {e}, captured: {m.captured(0) if m else 'None'}")
                 self.logger.debug(traceback.format_exc())
+                return
+
+            if command == 'a':
+                self._handle_param_update_ack(event_data, self._data_length)
                 return
 
             event_without_count = f"{event_info[0]}{event_info[1]}{event_data}"
@@ -388,6 +394,32 @@ class RtBridge(QtCore.QObject):
         self._num_count = 0
         self._payload.clear()
         self._buffer.clear()
+
+    def _handle_param_update_ack(self, event_data: str, data_length: int):
+        try:
+            values = []
+            for token in event_data.split('n'):
+                if not token:
+                    continue
+                values.append(float(token) / 100.0)
+                if len(values) == data_length:
+                    break
+
+            if len(values) < 5:
+                self.logger.warning("Ignoring short parameter update ack: %s", event_data)
+                return
+
+            ack = {
+                "joint_id": int(round(values[0])),
+                "controller_id": int(round(values[1])),
+                "param_index": int(round(values[2])),
+                "accepted": bool(int(round(values[3]))),
+                "reason": int(round(values[4])),
+            }
+            self.paramUpdateAckReceived.emit(ack)
+        except Exception as e:
+            self.logger.error(f"Failed to parse parameter update ack: {e}")
+            self.logger.debug(traceback.format_exc())
 
     def reset_for_new_ble_session(self):
         """Drop handshake/name/controller parse state before data from the next link arrives."""
