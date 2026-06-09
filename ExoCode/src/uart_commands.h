@@ -49,6 +49,7 @@ namespace UART_command_names
     static const uint8_t update_FSR_thesholds = 0x18;
     static const uint8_t get_system_reset = 0x19;
     static const uint8_t update_system_reset = 0x1A;
+    static const uint8_t update_controller_param_ack = 0x1B;
 };
 
 /**
@@ -99,6 +100,14 @@ namespace UART_command_enums
         CONTROLLER_ID = 0,
         PARAM_INDEX = 1,
         PARAM_VALUE = 2,
+        LENGTH
+    };
+    enum class controller_param_ack : uint8_t
+    {
+        CONTROLLER_ID = 0,
+        PARAM_INDEX = 1,
+        ACCEPTED = 2,
+        REASON = 3,
         LENGTH
     };
     enum class real_time_data : uint8_t
@@ -573,6 +582,28 @@ namespace UART_command_handlers
         rt_data::new_rt_msg = true;
     }
 
+    inline static void send_controller_param_ack(
+        UARTHandler *handler,
+        const param_update::Request& request,
+        bool accepted,
+        param_update::RejectionReason reason)
+    {
+        if (handler == NULL)
+        {
+            return;
+        }
+
+        UART_msg_t ack_msg;
+        ack_msg.command = UART_command_names::update_controller_param_ack;
+        ack_msg.joint_id = request.joint_id;
+        ack_msg.len = (uint8_t)UART_command_enums::controller_param_ack::LENGTH;
+        ack_msg.data[(uint8_t)UART_command_enums::controller_param_ack::CONTROLLER_ID] = request.controller_id;
+        ack_msg.data[(uint8_t)UART_command_enums::controller_param_ack::PARAM_INDEX] = request.param_index;
+        ack_msg.data[(uint8_t)UART_command_enums::controller_param_ack::ACCEPTED] = accepted ? 1.0f : 0.0f;
+        ack_msg.data[(uint8_t)UART_command_enums::controller_param_ack::REASON] = (float)((uint8_t)reason);
+        handler->UART_msg(ack_msg);
+    }
+
     inline static void update_controller_param(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
     {
         param_update::Request request;
@@ -587,6 +618,7 @@ namespace UART_command_handlers
                 &request.param_index))
         {
             logger::println("UART_command_handlers::update_controller_param rejected malformed message", LogLevel::Warn);
+            send_controller_param_ack(handler, request, false, param_update::RejectionReason::malformed);
             return;
         }
         request.value = msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_VALUE];
@@ -596,6 +628,7 @@ namespace UART_command_handlers
         if (reason != param_update::RejectionReason::accepted)
         {
             param_update::log_rejection("UART_command_handlers::update_controller_param", request, reason);
+            send_controller_param_ack(handler, request, false, reason);
             return;
         }
 
@@ -617,6 +650,7 @@ namespace UART_command_handlers
         logger::print(request.param_index);
         logger::print(", value=");
         logger::println(request.value);
+        send_controller_param_ack(handler, request, true, param_update::RejectionReason::accepted);
 		
 		#ifdef SIMPLE_DEBUG
 		Serial.print("\nTeensy just updated a control parameter:");
@@ -634,6 +668,13 @@ namespace UART_command_handlers
         // + String((uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::CONTROLLER_ID]) + ", "
         // + String((uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_INDEX]) + ", "
         // + String((uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_VALUE]) + ", ");
+    }
+
+    inline static void update_controller_param_ack(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
+    {
+        (void)handler;
+        (void)exo_data;
+        (void)msg;
     }
 
     inline static void update_error_code(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
@@ -888,6 +929,9 @@ namespace UART_command_utils
 
         case UART_command_names::update_controller_param:
             UART_command_handlers::update_controller_param(handler, exo_data, msg);
+            break;
+        case UART_command_names::update_controller_param_ack:
+            UART_command_handlers::update_controller_param_ack(handler, exo_data, msg);
             break;
 
         case UART_command_names::get_error_code:
