@@ -9,6 +9,7 @@
 #include "ExoData.h"
 #include "JointData.h"
 #include "ParamsFromSD.h"
+#include "ParamUpdateValidation.h"
 #include "Logger.h"
 #include "RealTimeI2C.h"
 #include "SystemReset.h"
@@ -574,25 +575,48 @@ namespace UART_command_handlers
 
     inline static void update_controller_param(UARTHandler *handler, ExoData *exo_data, UART_msg_t msg)
     {
-        //Get the joint
-        JointData *j_data = exo_data->get_joint_with(msg.joint_id);
-        if (j_data == NULL)
+        param_update::Request request;
+        request.joint_id = msg.joint_id;
+
+        if (msg.len != (uint8_t)UART_command_enums::controller_param::LENGTH ||
+            !param_update::try_float_to_uint8(
+                msg.data[(uint8_t)UART_command_enums::controller_param::CONTROLLER_ID],
+                &request.controller_id) ||
+            !param_update::try_float_to_uint8(
+                msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_INDEX],
+                &request.param_index))
         {
-            //logger::println("UART_command_handlers::update_controller_param->No joint with id =  ");
-            //logger::print(msg.joint_id);
-            //logger::println(" found");
+            logger::println("UART_command_handlers::update_controller_param rejected malformed message", LogLevel::Warn);
+            return;
+        }
+        request.value = msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_VALUE];
+
+        JointData *j_data = NULL;
+        param_update::RejectionReason reason = param_update::validate_request(exo_data, request, &j_data);
+        if (reason != param_update::RejectionReason::accepted)
+        {
+            param_update::log_rejection("UART_command_handlers::update_controller_param", request, reason);
             return;
         }
 
         //Set the controller
-        if (msg.data[(uint8_t)UART_command_enums::controller_params::CONTROLLER_ID] != j_data->controller.controller)
+        if (request.controller_id != j_data->controller.controller)
         {
-            j_data->controller.controller = (uint8_t)msg.data[(uint8_t)UART_command_enums::controller_params::CONTROLLER_ID];
+            j_data->controller.controller = request.controller_id;
             exo_data->set_default_parameters((uint8_t)j_data->id);
         }
 
         //Set the parameter
-        j_data->controller.parameters[(uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_INDEX]] = msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_VALUE];
+        j_data->controller.parameters[request.param_index] = request.value;
+
+        logger::print("UART_command_handlers::update_controller_param accepted: joint=");
+        logger::print(request.joint_id);
+        logger::print(", controller=");
+        logger::print(request.controller_id);
+        logger::print(", index=");
+        logger::print(request.param_index);
+        logger::print(", value=");
+        logger::println(request.value);
 		
 		#ifdef SIMPLE_DEBUG
 		Serial.print("\nTeensy just updated a control parameter:");
@@ -601,9 +625,9 @@ namespace UART_command_handlers
 		Serial.print(", CONTROLLER_ID: ");
 		Serial.print(j_data->controller.controller);
 		Serial.print(", PARAM_INDEX: ");
-		Serial.print((uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_INDEX]);
+		Serial.print(request.param_index);
 		Serial.print(", PARAM_VALUE: ");
-		Serial.print(j_data->controller.parameters[(uint8_t)msg.data[(uint8_t)UART_command_enums::controller_param::PARAM_INDEX]]);
+		Serial.print(j_data->controller.parameters[request.param_index]);
 		#endif
 		
         // Serial.println("Updating Controller Params: " + String(msg.joint_id) + ", "

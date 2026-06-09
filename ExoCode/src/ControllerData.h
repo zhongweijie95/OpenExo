@@ -265,6 +265,7 @@ class ControllerData {
          * @return uint8_t parameter length 
          */
         uint8_t get_parameter_length();
+        static uint8_t get_parameter_length_for(config_defs::JointType joint, uint8_t controller_id);
         
         
         uint8_t controller;                                 /**< Id of the current controller */
