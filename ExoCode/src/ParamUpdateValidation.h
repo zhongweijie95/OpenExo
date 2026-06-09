@@ -23,6 +23,7 @@ namespace param_update
         controller_mismatch = 3,
         invalid_index = 4,
         out_of_bounds = 5,
+        not_integer = 6,
     };
 
     struct Request
@@ -49,6 +50,8 @@ namespace param_update
                 return "invalid_index";
             case RejectionReason::out_of_bounds:
                 return "out_of_bounds";
+            case RejectionReason::not_integer:
+                return "not_integer";
             default:
                 return "unknown";
         }
@@ -79,6 +82,17 @@ namespace param_update
 
         *out = converted;
         return true;
+    }
+
+    inline static bool is_integer_float(float value)
+    {
+        long converted = (long)value;
+        float diff = value - (float)converted;
+        if (diff < 0.0f)
+        {
+            diff = -diff;
+        }
+        return diff <= 0.001f;
     }
 
     inline static bool has_valid_side(uint8_t joint_id)
@@ -148,6 +162,28 @@ namespace param_update
             return RejectionReason::invalid_index;
         }
 
+        float min_value = 0.0f;
+        float max_value = 0.0f;
+        bool integer_only = false;
+        if (ControllerData::get_parameter_bounds_for(
+                j_data->controller.joint,
+                request.controller_id,
+                request.param_index,
+                &min_value,
+                &max_value,
+                &integer_only))
+        {
+            if (request.value < min_value || request.value > max_value)
+            {
+                return RejectionReason::out_of_bounds;
+            }
+
+            if (integer_only && !is_integer_float(request.value))
+            {
+                return RejectionReason::not_integer;
+            }
+        }
+
         if (joint_out != NULL)
         {
             *joint_out = j_data;
@@ -184,6 +220,8 @@ namespace param_update
         logger::print(request.controller_id, LogLevel::Warn);
         logger::print(", index=", LogLevel::Warn);
         logger::print(request.param_index, LogLevel::Warn);
+        logger::print(", value=", LogLevel::Warn);
+        logger::print(request.value, LogLevel::Warn);
         logger::print(", reason=", LogLevel::Warn);
         logger::println(reason_name(reason), LogLevel::Warn);
     }

@@ -29,6 +29,7 @@ class MainWindow(QtWidgets.QMainWindow):
         3: "controller mismatch",
         4: "invalid parameter index",
         5: "value out of bounds",
+        6: "value must be an integer",
     }
 
     def __init__(self):
@@ -415,6 +416,15 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             self.logger.error(f"Failed to update trial parameter status: {e}")
             self.logger.debug(traceback.format_exc())
+        for page_name, page in (
+            ("settings", self.settings_page),
+            ("basic settings", self.basic_settings_page),
+        ):
+            try:
+                page.set_param_update_status(message, warning=warning)
+            except Exception as e:
+                self.logger.error(f"Failed to update {page_name} parameter status: {e}")
+                self.logger.debug(traceback.format_exc())
         if warning:
             try:
                 self.scan_page.status.setText(message)
